@@ -1994,7 +1994,8 @@ metric: <
 `,
 			contentType: "application/vnd.google.protobuf",
 			histograms: []histogramSample{{
-				t: 1234568,
+				t:      1234568,
+				metric: labels.FromStrings("__name__", "test_histogram"),
 				h: &histogram.Histogram{
 					Count:         175,
 					ZeroCount:     2,
@@ -2120,7 +2121,8 @@ metric: <
 				{metric: labels.FromStrings("__name__", "test_histogram_bucket", "le", "+Inf"), t: 1234568, f: 175},
 			},
 			histograms: []histogramSample{{
-				t: 1234568,
+				t:      1234568,
+				metric: labels.FromStrings("__name__", "test_histogram"),
 				h: &histogram.Histogram{
 					Count:         175,
 					ZeroCount:     2,
