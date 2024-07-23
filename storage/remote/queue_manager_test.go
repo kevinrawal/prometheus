@@ -1197,7 +1197,9 @@ func v2RequestToWriteRequest(v2Req *writev2.Request) (*prompb.WriteRequest, erro
 		// TODO handle metadata?
 	}
 	b := labels.NewScratchBuilder(0)
+
 	for i, rts := range v2Req.Timeseries {
+		exemplars := make([]*prompb.Exemplar, len(rts.Exemplars))
 		rts.ToLabels(&b, v2Req.Symbols).Range(func(l labels.Label) {
 			req.Timeseries[i] = &prompb.TimeSeries{}
 			req.Timeseries[i].Labels = append(req.Timeseries[i].Labels, &prompb.Label{
@@ -1206,33 +1208,38 @@ func v2RequestToWriteRequest(v2Req *writev2.Request) (*prompb.WriteRequest, erro
 			})
 		})
 
-		exemplars := make([]*prompb.Exemplar, len(rts.Exemplars))
-		for j, e := range rts.Exemplars {
-			exemplars[j] = &prompb.Exemplar{}
-			exemplars[j].Value = e.Value
-			exemplars[j].Timestamp = e.Timestamp
-			e.ToExemplar(&b, v2Req.Symbols).Labels.Range(func(l labels.Label) {
-				exemplars[j].Labels = append(exemplars[j].Labels, &prompb.Label{
-					Name:  l.Name,
-					Value: l.Value,
+		if len(rts.Exemplars) > 0 {
+			for j, e := range rts.Exemplars {
+				exemplars[j] = &prompb.Exemplar{}
+				exemplars[j].Value = e.Value
+				exemplars[j].Timestamp = e.Timestamp
+				e.ToExemplar(&b, v2Req.Symbols).Labels.Range(func(l labels.Label) {
+					exemplars[j].Labels = append(exemplars[j].Labels, &prompb.Label{
+						Name:  l.Name,
+						Value: l.Value,
+					})
 				})
-			})
-		}
-		req.Timeseries[i].Exemplars = exemplars
-
-		req.Timeseries[i].Samples = make([]*prompb.Sample, len(rts.Samples))
-		for j, s := range rts.Samples {
-			req.Timeseries[i].Samples[j].Timestamp = s.Timestamp
-			req.Timeseries[i].Samples[j].Value = s.Value
-		}
-
-		req.Timeseries[i].Histograms = make([]*prompb.Histogram, len(rts.Histograms))
-		for j, h := range rts.Histograms {
-			if h.IsFloatHistogram() {
-				req.Timeseries[i].Histograms[j] = prompb.FromFloatHistogram(h.Timestamp, h.ToFloatHistogram())
-				continue
 			}
-			req.Timeseries[i].Histograms[j] = prompb.FromIntHistogram(h.Timestamp, h.ToIntHistogram())
+			req.Timeseries[i].Exemplars = exemplars
+		}
+
+		if len(rts.Samples) > 0 {
+			req.Timeseries[i].Samples = make([]*prompb.Sample, len(rts.Samples))
+			for j, s := range rts.Samples {
+				sample := prompb.Sample{Value: s.Value, Timestamp: s.Timestamp}
+				req.Timeseries[i].Samples[j] = &sample
+			}
+		}
+
+		if len(rts.Histograms) > 0 {
+			req.Timeseries[i].Histograms = make([]*prompb.Histogram, len(rts.Histograms))
+			for j, h := range rts.Histograms {
+				if h.IsFloatHistogram() {
+					req.Timeseries[i].Histograms[j] = prompb.FromFloatHistogram(h.Timestamp, h.ToFloatHistogram())
+					continue
+				}
+				req.Timeseries[i].Histograms[j] = prompb.FromIntHistogram(h.Timestamp, h.ToIntHistogram())
+			}
 		}
 	}
 	return req, nil
