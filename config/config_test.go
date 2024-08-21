@@ -61,6 +61,11 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
+func init() {
+	// This can be removed when the default validation scheme in common is updated.
+	model.NameValidationScheme = model.UTF8Validation
+}
+
 func mustParseURL(u string) *config.URL {
 	parsed, err := url.Parse(u)
 	if err != nil {
@@ -2039,6 +2044,10 @@ var expectedErrors = []struct {
 }
 
 func TestBadConfigs(t *testing.T) {
+	model.NameValidationScheme = model.LegacyValidation
+	defer func() {
+		model.NameValidationScheme = model.UTF8Validation
+	}()
 	for _, ee := range expectedErrors {
 		_, err := LoadFile("testdata/"+ee.filename, false, false, log.NewNopLogger())
 		require.Error(t, err, "%s", ee.filename)
@@ -2048,6 +2057,10 @@ func TestBadConfigs(t *testing.T) {
 }
 
 func TestBadStaticConfigsJSON(t *testing.T) {
+	model.NameValidationScheme = model.LegacyValidation
+	defer func() {
+		model.NameValidationScheme = model.UTF8Validation
+	}()
 	content, err := os.ReadFile("testdata/static_config.bad.json")
 	require.NoError(t, err)
 	var tg targetgroup.Group
@@ -2056,6 +2069,10 @@ func TestBadStaticConfigsJSON(t *testing.T) {
 }
 
 func TestBadStaticConfigsYML(t *testing.T) {
+	model.NameValidationScheme = model.LegacyValidation
+	defer func() {
+		model.NameValidationScheme = model.UTF8Validation
+	}()
 	content, err := os.ReadFile("testdata/static_config.bad.yml")
 	require.NoError(t, err)
 	var tg targetgroup.Group
@@ -2299,4 +2316,43 @@ func TestScrapeConfigDisableCompression(t *testing.T) {
 	require.NoError(t, yaml.UnmarshalStrict(out, got))
 
 	require.False(t, got.ScrapeConfigs[0].EnableCompression)
+}
+
+func TestScrapeConfigLegacyGlobalImpliesLegacyValidation(t *testing.T) {
+	want, err := LoadFile("testdata/scrape_config_global_validation_mode.yml", false, false, log.NewNopLogger())
+	require.NoError(t, err)
+
+	out, err := yaml.Marshal(want)
+
+	require.NoError(t, err)
+	got := &Config{}
+	require.NoError(t, yaml.UnmarshalStrict(out, got))
+
+	require.Equal(t, "legacy", got.ScrapeConfigs[0].MetricNameValidationScheme)
+}
+
+func TestScrapeConfigLegacyLocalLegacyValidation(t *testing.T) {
+	want, err := LoadFile("testdata/scrape_config_local_validation_mode.yml", false, false, log.NewNopLogger())
+	require.NoError(t, err)
+
+	out, err := yaml.Marshal(want)
+
+	require.NoError(t, err)
+	got := &Config{}
+	require.NoError(t, yaml.UnmarshalStrict(out, got))
+
+	require.Equal(t, "legacy", got.ScrapeConfigs[0].MetricNameValidationScheme)
+}
+
+func TestScrapeConfigLegacyLocalOverridesGlobalValidation(t *testing.T) {
+	want, err := LoadFile("testdata/scrape_config_local_global_validation_mode.yml", false, false, log.NewNopLogger())
+	require.NoError(t, err)
+
+	out, err := yaml.Marshal(want)
+
+	require.NoError(t, err)
+	got := &Config{}
+	require.NoError(t, yaml.UnmarshalStrict(out, got))
+
+	require.Equal(t, "utf8", got.ScrapeConfigs[0].MetricNameValidationScheme)
 }
