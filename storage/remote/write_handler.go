@@ -49,6 +49,8 @@ type writeHandler struct {
 	samplesAppendedWithoutMetadata prometheus.Counter
 
 	acceptedProtoMsgs map[config.RemoteWriteProtoMsg]struct{}
+
+	ingestCTZeroSample bool
 }
 
 const maxAheadTime = 10 * time.Minute
@@ -58,7 +60,7 @@ const maxAheadTime = 10 * time.Minute
 //
 // NOTE(bwplotka): When accepting v2 proto and spec, partial writes are possible
 // as per https://prometheus.io/docs/specs/remote_write_spec_2_0/#partial-write.
-func NewWriteHandler(logger log.Logger, reg prometheus.Registerer, appendable storage.Appendable, acceptedProtoMsgs []config.RemoteWriteProtoMsg) http.Handler {
+func NewWriteHandler(logger log.Logger, reg prometheus.Registerer, appendable storage.Appendable, acceptedProtoMsgs []config.RemoteWriteProtoMsg, ingestCTZeroSample bool) http.Handler {
 	protoMsgs := map[config.RemoteWriteProtoMsg]struct{}{}
 	for _, acc := range acceptedProtoMsgs {
 		protoMsgs[acc] = struct{}{}
@@ -79,6 +81,8 @@ func NewWriteHandler(logger log.Logger, reg prometheus.Registerer, appendable st
 			Name:      "remote_write_without_metadata_appended_samples_total",
 			Help:      "The total number of received remote write samples (and histogram samples) which were ingested without corresponding metadata.",
 		}),
+
+		ingestCTZeroSample: ingestCTZeroSample,
 	}
 	return h
 }
@@ -398,7 +402,7 @@ func (h *writeHandler) appendV2(app storage.Appender, req *writev2.Request, rs *
 		for i, s := range ts.Samples {
 			// CT only needs to be ingested for the first sample, it will be considered
 			// out of order for the rest.
-			if i == 0 && ts.CreatedTimestamp != 0 {
+			if i == 0 && ts.CreatedTimestamp != 0 && h.ingestCTZeroSample {
 				ref, err = app.AppendCTZeroSample(ref, ls, s.Timestamp, ts.CreatedTimestamp)
 				if err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
 					// Even for the first sample OOO is a common scenario.
